@@ -111,7 +111,7 @@ def start_job(job, parser):
         else:
             startstopparams.append('--background')
 
-        run_command(START_STOP_DAEMON + ' --start --pidfile %s %s --oknodo --exec %s -- %s' % (get_pidfile(job), " ".join(startstopparams), execfilename, execargs), exit_on_error = True)
+        run_command(START_STOP_DAEMON + ' --start --pidfile %s %s --exec %s -- %s' % (get_pidfile(job), " ".join(startstopparams), execfilename, execargs), exit_on_error = True)
 
     if start_script:
         run_script(start_script, exit_on_error = True)
@@ -120,6 +120,8 @@ def start_job(job, parser):
         run_command(post_start_exec, exit_on_error = True)
     if post_start_script: 
         run_script(post_start_script, exit_on_error = True)
+
+    print ("%s: started" % job)
         
 def stop_job(job, parser):
     global START_STOP_DAEMON
@@ -145,7 +147,7 @@ def stop_job(job, parser):
         execfilename = os.path.basename(execparams[0].strip())
 
         if os.access(pidfile, os.R_OK):
-            run_command(START_STOP_DAEMON + ' --stop --name %s --pidfile %s --retry 5' % (execfilename, pidfile), exit_on_error = False)
+            run_command(START_STOP_DAEMON + ' --stop --name %s --pidfile %s --retry 5' % (execfilename, pidfile), exit_on_error = True)
         else:
             exit_error("We don't have the pidfile for the job, cannot stop it")
             pass
@@ -154,6 +156,8 @@ def stop_job(job, parser):
         run_command(post_stop_exec, exit_on_error = True)
     if post_stop_script: 
         run_script(post_stop_script, exit_on_error = True)
+
+    print ("%s: stopped" % job)
 
 def restart_job(job, parser):
     stop_job(job, parser)
@@ -170,7 +174,8 @@ def reload_job(job, parser):
         execfilename = os.path.basename(execparams[0].strip())
 
         if os.access(pidfile, os.R_OK):
-            run_command(START_STOP_DAEMON + ' --stop --signal HUP --name %s --pidfile %s ' % (execfilename, pidfile), exit_on_error = False)
+            run_command(START_STOP_DAEMON + ' --stop --signal HUP --name %s --pidfile %s ' % (execfilename, pidfile), exit_on_error = True)
+            print ("%s: SIGHUP sent" % job)
         else:
             exit_error("We don't have the pidfile for the job, cannot reload it")
             pass
