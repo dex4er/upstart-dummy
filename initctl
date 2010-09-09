@@ -160,10 +160,56 @@ def restart_job(job, parser):
     start_job(job, parser)
 
 def reload_job(job, parser):
-    raise NotImplementedError
+    global START_STOP_DAEMON
+
+    start_exec = parser.get('exec')
+
+    if start_exec:
+        pidfile = get_pidfile(job)
+        execparams = start_exec.split(' ', 1)
+        execfilename = os.path.basename(execparams[0].strip())
+
+        if os.access(pidfile, os.R_OK):
+            run_command(START_STOP_DAEMON + ' --stop --signal HUP --name %s --pidfile %s ' % (execfilename, pidfile), exit_on_error = False)
+        else:
+            exit_error("We don't have the pidfile for the job, cannot reload it")
+            pass
+    else:
+        # nothing to reload, do a restart instead
+        restart_job(job, parser)
+
 
 def job_status(job, parser):
-    raise NotImplementedError
+    start_exec = parser.get('exec')
+    
+    if start_exec:
+        pidfile = get_pidfile(job)
+        pid = open(pidfile).read().strip()
+        execparams = start_exec.split(' ', 1)
+        execfilename = os.path.basename(execparams[0].strip())
+        
+        if os.access(pidfile, os.R_OK):
+            try:
+                os.kill(int(pid), 0)
+                # if there wasn't an exception, that means there is a process with that name
+                # now we only have to check if it has the same name as what we think...
+                exitcode = run_command("pidof %s | grep -q %s" % (execfilename, pid))
+                if exitcode == 0:
+                    status = "running, pid: %s" % pid
+                else:
+                    status = "not running"
+                
+            except OSError:
+                status = "not running"
+        else:
+            exit_error("We don't have the pidfile for the job, cannot get the status for it")
+            pass        
+                
+        
+    else:
+        status = "no status information available"
+        
+    print "%s: %s" % (job, status)
 
 if __name__ == '__main__':
     global quiet
