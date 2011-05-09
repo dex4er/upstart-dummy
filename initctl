@@ -102,7 +102,7 @@ def start_job(job, parser):
             elif fork == 'daemon':
                 startstopparams.append('--expect-daemon')
         else:
-            startstopparams.append('--background')
+            startstopparams.append('--background --make-pidfile')
 
         run_command(START_STOP_DAEMON + ' --start --pidfile %s %s --exec %s -- %s' % (get_pidfile(job), " ".join(startstopparams), execfilename, execargs), exit_on_error = True)
 
