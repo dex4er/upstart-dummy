@@ -65,10 +65,11 @@ class UpstartConfigParser(object):
                     
                     while True:
                         argline = f.readline()
-                        if argline.strip() in ['end script', '']:
+                        if argline == '' or argline.strip() == 'end script':
                             break
                         else:
-                            args.append(argline.strip())
+                            if len(argline.strip()) > 0:
+                                args.append(argline.strip())
                     
                     break                
 
