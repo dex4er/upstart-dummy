@@ -85,6 +85,7 @@ def start_job(job, parser):
     post_start_script = parser.get('post-start script')
     fork = parser.get('expect')
 
+    # upstart exists if there's an error in pre-exec stuff, let's mimic the behaviour
     if pre_start_exec:
         run_command(pre_start_exec, exit_on_error = True)
     if pre_start_script: 
@@ -184,8 +185,9 @@ def reload_job(job, parser):
         restart_job(job, parser)
 
 
-def job_status(job, parser):
+def job_status(job, parser, quiet = False):
     start_exec = parser.get('exec')
+    ret = False
     
     if start_exec:
         pidfile = get_pidfile(job)
@@ -201,20 +203,23 @@ def job_status(job, parser):
                 exitcode = run_command("pidof %s | grep -q %s" % (execfilename, pid))
                 if exitcode == 0:
                     status = "running, pid: %s" % pid
+                    ret = True
                 else:
                     status = "not running"
                 
             except OSError:
                 status = "not running"
         else:
-            exit_error("We don't have the pidfile for the job, cannot get the status for it")
-            pass        
+            if not quiet:
+                sys.stdout.write("We don't have the pidfile for the job, cannot get the status for it")
                 
         
     else:
         status = "no status information available"
-        
-    print "%s: %s" % (job, status)
+
+    if not quiet:
+        print "%s: %s" % (job, status)
+    return ret
 
 if __name__ == '__main__':
     global quiet
@@ -266,9 +271,15 @@ if __name__ == '__main__':
     parser = UpstartConfigParser()
     parser.read(conffile)
 
+    status = job_status(job, parser, quiet = True)
+
     if cmd == 'start':
-        start_job(job, parser)
+        if status:
+            exit_error("%s already running" % job)
+        else:
+            start_job(job, parser)
     elif cmd == 'stop':
+        # as we don't always know if something's running, we play safe here and stop it anyway
         stop_job(job, parser)
     elif cmd == 'restart':
         restart_job(job, parser)
