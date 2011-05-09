@@ -23,6 +23,7 @@ class UpstartConfigParser(object):
                                "nice", "oom", "limit" ,"chroot", "chdir", "pre-start exec", "post-start exec", "pre-stop exec",
                                "post-stop exec"]
 
+        self.gather_stanzas = ["env"]
         # these all end with "end script"
         self.multiline_stanzas = ["script", "pre-start script", "post-start script", "pre-stop script", "post-stop script"]
 
@@ -74,7 +75,19 @@ class UpstartConfigParser(object):
                     break                
 
             if stanza:
-                self.values[stanza] = args
+                if stanza in self.gather_stanzas:
+                    parts = args.split("=", 1)
+                    if len(parts) == 2:
+                        (key, value) = parts
+                    else:
+                        key = parts[0]
+                        value = True
+                    if not (stanza in self.values.keys()):
+                        self.values[stanza] = {}
+
+                    self.values[stanza][key] = value
+                else:
+                    self.values[stanza] = args
                 
             line = f.readline()
             

@@ -21,7 +21,7 @@ def get_pidfile(job):
         os.makedirs(PID_DIR)
     return os.path.join(PID_DIR, job+".pid")    
 
-def run_command(cmd, env = None, exit_on_error = False):
+def run_command(cmd, env = {}, exit_on_error = False):
     global dry_run
     
     if dry_run:
@@ -31,17 +31,23 @@ def run_command(cmd, env = None, exit_on_error = False):
     
 #    print "DEBUG "+cmd
 
+    environ_backup = os.environ
+    if env and len(env) > 0:
+        for (envkey, envval) in env.iteritems():
+            os.environ[envkey] = envval
 
     exitcode = os.system(cmd)
+
+    os.environ = environ_backup
 
     if exitcode != 0 and exit_on_error:
         exit_error("Command exited with error code; cmd='%s', ret='%s'" % (cmd, exitcode))   
     return exitcode
 
-def run_script(script, exit_on_error = False):
+def run_script(script, env = {}, exit_on_error = False):
     # FIXME: is this enough? will this work?
     cmd = ";".join(script)
-    return run_command(cmd, exit_on_error = exit_on_error)
+    return run_command(cmd, env = env, exit_on_error = exit_on_error)
 
 def which(program):
     def is_exe(fpath):
@@ -69,12 +75,13 @@ def start_job(job, parser):
     post_start_exec = parser.get('post-start exec')
     post_start_script = parser.get('post-start script')
     fork = parser.get('expect')
+    env = parser.get('env')
 
     # upstart exists if there's an error in pre-exec stuff, let's mimic the behaviour
     if pre_start_exec:
-        run_command(pre_start_exec, exit_on_error = True)
+        run_command(pre_start_exec, env = env, exit_on_error = True)
     if pre_start_script: 
-        run_script(pre_start_script, exit_on_error = True)
+        run_script(pre_start_script, env = env, exit_on_error = True)
         
     if start_exec:
         # we're in a bit of a trouble here, as upstart accepts about any kind of bash-interpretable call here but
@@ -100,12 +107,12 @@ def start_job(job, parser):
         run_command(START_STOP_DAEMON + ' --start --pidfile %s %s --exec %s -- %s' % (get_pidfile(job), " ".join(startstopparams), execfilename, execargs), exit_on_error = True)
 
     if start_script:
-        run_script(start_script, exit_on_error = True)
+        run_script(start_script, env = env, exit_on_error = True)
 
     if post_start_exec:
-        run_command(post_start_exec, exit_on_error = True)
+        run_command(post_start_exec, env = env, exit_on_error = True)
     if post_start_script: 
-        run_script(post_start_script, exit_on_error = True)
+        run_script(post_start_script, env = env, exit_on_error = True)
 
     print ("%s: started" % job)
         
@@ -117,13 +124,14 @@ def stop_job(job, parser):
     start_exec = parser.get('exec')
     post_stop_exec = parser.get('post-stop exec')
     post_stop_script = parser.get('post-stop script')
+    env = parser.get('env')
 
     pidfile = get_pidfile(job)
 
     if pre_stop_exec:
-        run_command(pre_stop_exec, exit_on_error = True)
+        run_command(pre_stop_exec, env = env, exit_on_error = True)
     if pre_stop_script: 
-        run_script(pre_stop_script, exit_on_error = True)
+        run_script(pre_stop_script, env = env, exit_on_error = True)
 
     # let's try and figure out how to stop the stuff that was simply exec'd
     if start_exec:
@@ -133,15 +141,15 @@ def stop_job(job, parser):
         execfilename = os.path.basename(execparams[0].strip())
 
         if os.access(pidfile, os.R_OK):
-            run_command(START_STOP_DAEMON + ' --stop --name %s --pidfile %s --retry 5' % (execfilename, pidfile), exit_on_error = True)
+            run_command(START_STOP_DAEMON + ' --stop --name %s --pidfile %s --retry 5' % (execfilename, pidfile), env = env, exit_on_error = True)
         else:
             exit_error("We don't have the pidfile for the job, cannot stop it")
             pass
 
     if post_stop_exec:
-        run_command(post_stop_exec, exit_on_error = True)
+        run_command(post_stop_exec, env = env, exit_on_error = True)
     if post_stop_script: 
-        run_script(post_stop_script, exit_on_error = True)
+        run_script(post_stop_script, env = env, exit_on_error = True)
 
     print ("%s: stopped" % job)
 
@@ -153,6 +161,7 @@ def reload_job(job, parser):
     global START_STOP_DAEMON
 
     start_exec = parser.get('exec')
+    env = parser.get('env')
 
     if start_exec:
         pidfile = get_pidfile(job)
@@ -160,7 +169,7 @@ def reload_job(job, parser):
         execfilename = os.path.basename(execparams[0].strip())
 
         if os.access(pidfile, os.R_OK):
-            run_command(START_STOP_DAEMON + ' --stop --signal HUP --name %s --pidfile %s ' % (execfilename, pidfile), exit_on_error = True)
+            run_command(START_STOP_DAEMON + ' --stop --signal HUP --name %s --pidfile %s ' % (execfilename, pidfile), env = env, exit_on_error = True)
             print ("%s: SIGHUP sent" % job)
         else:
             exit_error("We don't have the pidfile for the job, cannot reload it")

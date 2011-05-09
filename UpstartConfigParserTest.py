@@ -4,7 +4,8 @@ Created on Aug 26, 2010
 @author: gyp
 '''
 import unittest
-import os
+import os, sys
+sys.path.append('../../../fixups/core/')
 from UpstartConfigParser import *
 
 
@@ -22,7 +23,7 @@ class UpstartConfigParserTest(unittest.TestCase):
                         'rc.conf': {
                                         'author': 'Scott James Remnant <scott@netsplit.com>',
                                         'export': 'PREVLEVEL',
-                                        'env': 'INIT_VERBOSE'
+                                        'env': {'INIT_VERBOSE': True}
                                     },
                         'kdm.conf': {
                                         'emits': 'starting-dm',
@@ -34,16 +35,31 @@ class UpstartConfigParserTest(unittest.TestCase):
                                             'exec': '/sbin/ureadahead --daemon',
                                             'kill': 'timeout 180',
                                             'expect': 'fork'
+                                            },
+                        'munin-node.conf': {
+                                            'expect': 'fork',
+                                            'respawn': '',
+                                            'pre-start script': 
+                                                ['mkdir -p /var/run/munin',
+                                                 'chown munin:munin /var/run/munin',
+                                                 'chmod 0755 /var/run/munin'],
+                                            'script':
+                                                ['[ -r /etc/default/munin-node ] && . /etc/default/munin-node',
+                                                 'exec $DAEMON $DAEMON_ARGS'
+                                                 ],
+                                            'env' : {'DAEMON' : '/usr/sbin/munin-node',
+                                                     'TESTENV' : '/this/is/a/testenv'
+                                                    }
                                             }
                        }
         pass
 
 
     def testParseFiles(self):
-        for filename in os.listdir('test_configs/'):
+        for filename in os.listdir('fixups/upstart_test_configs/'):
 
             parser = UpstartConfigParser()
-            parser.read("test_configs/%s" % filename)
+            parser.read("fixups/upstart_test_configs/%s" % filename)
 
             if filename in self.checks.keys():
                 for (checkkey, checkvalue) in self.checks[filename].iteritems():
