@@ -5,7 +5,7 @@ Created on Aug 26, 2010
 @author: gyp
 '''
 
-import sys, optparse, os, select, time, subprocess, signal
+import sys, optparse, os, select, time, subprocess, signal, tempfile
 from UpstartConfigParser import *
 
 START_STOP_DAEMON='start-stop-daemon'
@@ -45,9 +45,18 @@ def run_command(cmd, env = {}, exit_on_error = False):
     return exitcode
 
 def run_script(script, env = {}, exit_on_error = False):
-    # FIXME: is this enough? will this work?
-    cmd = ";".join(script)
-    return run_command(cmd, env = env, exit_on_error = exit_on_error)
+    # mkstemp() can return weird filenames, so we need to quote it well
+    def shellquote(s):
+        return "'" + s.replace("'", "'\\''") + "'"
+
+    (fd, tempscript) = tempfile.mkstemp(prefix = 'upstart-dummy-')
+    f = os.fdopen(fd, 'w')
+    f.write('\n'.join(script))
+    f.close()
+    cmd = '/bin/bash %s' % shellquote(tempscript)
+    ret = run_command(cmd, env = env, exit_on_error = exit_on_error)
+    os.unlink(tempscript)
+    return ret
 
 def which(program):
     def is_exe(fpath):
