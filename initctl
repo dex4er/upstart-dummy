@@ -44,17 +44,30 @@ def run_command(cmd, env = {}, exit_on_error = False):
         exit_error("Command exited with error code; cmd='%s', ret='%s'" % (cmd, exitcode))   
     return exitcode
 
-def run_script(script, env = {}, exit_on_error = False):
+def run_script(script, env = {}, exit_on_error = False, fork = None):
     # mkstemp() can return weird filenames, so we need to quote it well
     def shellquote(s):
         return "'" + s.replace("'", "'\\''") + "'"
 
     (fd, tempscript) = tempfile.mkstemp(prefix = 'upstart-dummy-')
     f = os.fdopen(fd, 'w')
+    f.write('#!/bin/bash\n')
     f.write('\n'.join(script))
     f.close()
-    cmd = '/bin/bash %s' % shellquote(tempscript)
-    ret = run_command(cmd, env = env, exit_on_error = exit_on_error)
+    os.chmod(tempscript, 0700)
+    cmd = shellquote(tempscript)
+    if fork:
+        startstopparams = []
+        startstopparams.append('--trace-pid')
+        if fork == 'fork':
+            startstopparams.append('--expect-fork')
+        elif fork == 'daemon':
+            startstopparams.append('--expect-daemon')
+
+        ret = run_command(START_STOP_DAEMON + ' --start --pidfile %s %s --exec %s' % (get_pidfile(job), " ".join(startstopparams), cmd), exit_on_error = False)
+    else:
+        ret = run_command(cmd, env = env, exit_on_error = exit_on_error)
+
     os.unlink(tempscript)
     return ret
 
@@ -116,7 +129,7 @@ def start_job(job, parser):
         run_command(START_STOP_DAEMON + ' --start --pidfile %s %s --exec %s -- %s' % (get_pidfile(job), " ".join(startstopparams), execfilename, execargs), exit_on_error = True)
 
     if start_script:
-        run_script(start_script, env = env, exit_on_error = True)
+        run_script(start_script, env = env, exit_on_error = True, fork = fork)
 
     if post_start_exec:
         run_command(post_start_exec, env = env, exit_on_error = True)
@@ -131,6 +144,8 @@ def stop_job(job, parser):
     pre_stop_exec = parser.get('pre-stop exec')
     pre_stop_script = parser.get('pre-stop script')
     start_exec = parser.get('exec')
+    start_script = parser.get('script')
+    fork = parser.get('expect')
     post_stop_exec = parser.get('post-stop exec')
     post_stop_script = parser.get('post-stop script')
     env = parser.get('env')
@@ -143,14 +158,18 @@ def stop_job(job, parser):
         run_script(pre_stop_script, env = env, exit_on_error = True)
 
     # let's try and figure out how to stop the stuff that was simply exec'd
-    if start_exec:
+    if start_exec or (start_script and fork):
         # we're in a bit of a trouble here, as upstart accepts about any kind of bash-interpretable call here but
         # start-stop-daemon needs a proper name... 
-        execparams = start_exec.split(' ', 1)
-        execfilename = os.path.basename(execparams[0].strip())
+        if start_exec:
+            execparams = start_exec.split(' ', 1)
+            execfilename = os.path.basename(execparams[0].strip())
+            namecheck = " --name %s" % execfilename
+        else:
+            namecheck = ""
 
         if os.access(pidfile, os.R_OK):
-            run_command(START_STOP_DAEMON + ' --stop --name %s --pidfile %s --retry 5' % (execfilename, pidfile), env = env, exit_on_error = True)
+            run_command(START_STOP_DAEMON + ' --stop%s --pidfile %s --retry 5' % (namecheck, pidfile), env = env, exit_on_error = True)
         else:
             exit_error("We don't have the pidfile for the job, cannot stop it")
             pass
