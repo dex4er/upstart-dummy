@@ -21,22 +21,7 @@ def get_pidfile(job):
         os.makedirs(PID_DIR)
     return os.path.join(PID_DIR, job+".pid")    
 
-def merge_env(env, env_merge=True, base_env=None):
-    if not env_merge:
-        if env:
-            return dict(env)
-        else:
-            return None
-    if base_env == None:
-        base_env = os.environ
-    new_env = dict(base_env)
-    if env:
-        for k in env.iterkeys():
-            new_env[k] = env[k]
-
-    return new_env
-
-def run_command(cmd, env = None, env_merge = True, exit_on_error = False):
+def run_command(cmd, env = None, exit_on_error = False):
     global dry_run
     
     if dry_run:
