@@ -1,0 +1,232 @@
+#!/usr/bin/python
+'''
+Created on Aug 26, 2010
+
+@author: gyp
+'''
+
+import sys, optparse, os, select, time, subprocess, signal
+from UpstartConfigParser import *
+
+START_STOP_DAEMON='start-stop-daemon'
+
+
+def exit_error(msg):
+    sys.stdout.write(msg+"\n")
+    sys.exit(1)
+
+def get_pidfile(job):
+    # create our own pidfile directory for processes that are only exec'd
+    if not os.path.isdir(PID_DIR):
+        os.makedirs(PID_DIR)
+    return os.path.join(PID_DIR, job+".pid")    
+
+def merge_env(env, env_merge=True, base_env=None):
+    if not env_merge:
+        if env:
+            return dict(env)
+        else:
+            return None
+    if base_env == None:
+        base_env = os.environ
+    new_env = dict(base_env)
+    if env:
+        for k in env.iterkeys():
+            new_env[k] = env[k]
+
+    return new_env
+
+def run_command(cmd, env = None, env_merge = True, exit_on_error = False):
+    global dry_run
+    
+    if dry_run:
+        if not quiet:
+            print cmd
+        return (0, '')
+    
+#    print "DEBUG "+cmd
+
+
+    exitcode = os.system(cmd)
+
+    if exitcode != 0 and exit_on_error:
+        exit_error("Command exited with error code; cmd='%s', ret='%s'" % (cmd, exitcode))   
+    return exitcode
+
+def run_script(script, exit_on_error = False):
+    # FIXME: is this enough? will this work?
+    cmd = ";".join(script)
+    return run_command(cmd, exit_on_error = exit_on_error)
+
+def which(program):
+    def is_exe(fpath):
+        return os.path.exists(fpath) and os.access(fpath, os.X_OK)
+
+    fpath, fname = os.path.split(program)
+    if fpath:
+        if is_exe(program):
+            return program
+    else:
+        for path in os.environ["PATH"].split(os.pathsep):
+            exe_file = os.path.join(path, program)
+            if is_exe(exe_file):
+                return exe_file
+
+    return None
+
+def start_job(job, parser):
+    global START_STOP_DAEMON
+
+    pre_start_exec = parser.get('pre-start exec')
+    pre_start_script = parser.get('pre-start script')
+    start_exec = parser.get('exec')
+    start_script = parser.get('script')
+    post_start_exec = parser.get('post-start exec')
+    post_start_script = parser.get('post-start script')
+    fork = parser.get('expect')
+
+    if pre_start_exec:
+        run_command(pre_start_exec, exit_on_error = True)
+    if pre_start_script: 
+        run_script(pre_start_script, exit_on_error = True)
+        
+    if start_exec:
+        # we're in a bit of a trouble here, as upstart accepts about any kind of bash-interpretable call here but
+        # start-stop-daemon needs a proper name... 
+        execparams = start_exec.split(' ', 1)
+        execfilename = which(execparams[0].strip())
+        if len(execparams) > 1:
+            execargs = execparams[1]
+        else:
+            execargs = ''            
+        
+        startstopparams = []
+        
+        if fork:
+            startstopparams.append('--trace-pid')
+            if fork == 'fork':
+                startstopparams.append('--expect-fork')
+            elif fork == 'daemon':
+                startstopparams.append('--expect-daemon')
+        else:
+            startstopparams.append('--background')
+
+        run_command(START_STOP_DAEMON + ' --start --pidfile %s %s --oknodo --exec %s -- %s' % (get_pidfile(job), " ".join(startstopparams), execfilename, execargs), exit_on_error = True)
+
+    if start_script:
+        run_script(start_script, exit_on_error = True)
+
+    if post_start_exec:
+        run_command(post_start_exec, exit_on_error = True)
+    if post_start_script: 
+        run_script(post_start_script, exit_on_error = True)
+        
+def stop_job(job, parser):
+    global START_STOP_DAEMON
+
+    pre_stop_exec = parser.get('pre-stop exec')
+    pre_stop_script = parser.get('pre-stop script')
+    start_exec = parser.get('exec')
+    post_stop_exec = parser.get('post-stop exec')
+    post_stop_script = parser.get('post-stop script')
+
+    pidfile = get_pidfile(job)
+
+    if pre_stop_exec:
+        run_command(pre_stop_exec, exit_on_error = True)
+    if pre_stop_script: 
+        run_script(pre_stop_script, exit_on_error = True)
+
+    # let's try and figure out how to stop the stuff that was simply exec'd
+    if start_exec:
+        # we're in a bit of a trouble here, as upstart accepts about any kind of bash-interpretable call here but
+        # start-stop-daemon needs a proper name... 
+        execparams = start_exec.split(' ', 1)
+        execfilename = os.path.basename(execparams[0].strip())
+
+        if os.access(pidfile, os.R_OK):
+            run_command(START_STOP_DAEMON + ' --stop --name %s --pidfile %s --retry 5' % (execfilename, pidfile), exit_on_error = False)
+        else:
+            exit_error("We don't have the pidfile for the job, cannot stop it")
+            pass
+
+    if post_stop_exec:
+        run_command(post_stop_exec, exit_on_error = True)
+    if post_stop_script: 
+        run_script(post_stop_script, exit_on_error = True)
+
+def restart_job(job, parser):
+    stop_job(job, parser)
+    start_job(job, parser)
+
+def reload_job(job, parser):
+    raise NotImplementedError
+
+def job_status(job, parser):
+    raise NotImplementedError
+
+if __name__ == '__main__':
+    global quiet
+    global no_wait
+    global dry_run
+    global INIT_CONF_DIR
+    global PID_DIR
+    
+    INIT_CONF_DIR = '/etc/init/'
+    PID_DIR = '/var/run/upstart-dummy-pids/'
+    
+    if os.path.basename(sys.argv[0]) == 'initctl':
+        cmd = sys.argv[1]
+        sysargs = sys.argv[2:]
+    else:
+        cmd = os.path.basename(sys.argv[0])
+        sysargs = sys.argv[1:]
+
+    if cmd not in ['start', 'stop', 'restart', 'reload', 'status']:
+        print "Command %s not supported, exiting!" % cmd
+        sys.exit(1)
+
+    parser = optparse.OptionParser()
+    parser.set_usage("usage: Usage: %s [OPTION]... JOB\n%s job" % (cmd, cmd.capitalize()))
+#    parser.add_option("-h", "--help", action="help",  help="Show this help message and exit")
+    parser.add_option('-q', '--quiet', action="store_true", dest='quiet', help='reduce output to errors only')
+    parser.add_option('-n', '--no-wait', action="store_true", dest='no_wait', help='do not wait for job to start before exiting')
+    parser.add_option('-d', '--dry-run', action="store_true", dest='dry_run', help='do not do anything, just display what would be done')
+    parser.disable_interspersed_args()
+    (opts, args) = parser.parse_args(sysargs)
+    
+    quiet = opts.quiet
+    no_wait = opts.no_wait
+    dry_run = opts.dry_run
+    
+    if len(args) == 0:
+        exit_error(parser.get_usage())
+    
+    job = os.path.basename(args[0]) # prevent nasty stuff
+    conffile = None
+    for root, dirs, files in os.walk(INIT_CONF_DIR):
+        if job+'.conf' in files:
+            conffile = os.path.join(root, job+'.conf')
+            break 
+
+    if not conffile or not os.access(INIT_CONF_DIR+job+'.conf', os.R_OK):
+        exit_error("No such job: %s" % job)
+    
+    parser = UpstartConfigParser()
+    parser.read(conffile)
+
+    if cmd == 'start':
+        start_job(job, parser)
+    elif cmd == 'stop':
+        stop_job(job, parser)
+    elif cmd == 'restart':
+        restart_job(job, parser)
+    elif cmd == 'reload':
+        reload_job(job, parser)
+    elif cmd == 'status':
+        job_status(job, parser)
+
+    # we will exit with error before if something bad happens
+    sys.exit(0)
+
+  
