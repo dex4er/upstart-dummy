@@ -187,28 +187,24 @@ def reload_job(job, parser):
 
 def job_status(job, parser, quiet = False):
     start_exec = parser.get('exec')
+    status = "not running"
     ret = False
     
     if start_exec:
         pidfile = get_pidfile(job)
-        pid = open(pidfile).read().strip()
-        execparams = start_exec.split(' ', 1)
-        execfilename = os.path.basename(execparams[0].strip())
         
         if os.access(pidfile, os.R_OK):
-            try:
-                os.kill(int(pid), 0)
-                # if there wasn't an exception, that means there is a process with that name
-                # now we only have to check if it has the same name as what we think...
-                exitcode = run_command("pidof %s | grep -q %s" % (execfilename, pid))
-                if exitcode == 0:
-                    status = "running, pid: %s" % pid
-                    ret = True
-                else:
-                    status = "not running"
-                
-            except OSError:
+            pid = open(pidfile).read().strip()
+            execparams = start_exec.split(' ', 1)
+            execfilename = os.path.basename(execparams[0].strip())
+
+            procfile = "/proc/%s/exe" % pid
+            if os.path.islink(procfile) and os.path.basename(os.path.realpath(procfile)) == execfilename:
+                status = "running, pid: %s" % pid
+                ret = True
+            else:
                 status = "not running"
+
         else:
             if not quiet:
                 sys.stdout.write("We don't have the pidfile for the job, cannot get the status for it")
