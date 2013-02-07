@@ -21,7 +21,8 @@ class UpstartConfigParser(object):
         self.simple_stanzas = ["instance", "description", "author", "version", "env", "export", # "start on", "stop on", 
                                "emits", "exec", "expect", "task", "kill", "respawn", "normal", "console", "umask",
                                "nice", "oom", "limit" ,"chroot", "chdir", "pre-start exec", "post-start exec", "pre-stop exec",
-                               "post-stop exec"]
+                               "post-stop exec",
+                               "emits", "start on", "stop on"]
 
         self.gather_stanzas = ["env"]
         # these all end with "end script"

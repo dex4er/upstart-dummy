@@ -239,16 +239,35 @@ def job_status(job, parser, quiet = False):
         print "%s: %s" % (job, status)
     return ret
 
+def show_config(job, parser, quiet = False):
+    print job
+
+    emits = parser.get('emits')
+    if emits:
+        print "  emits %s" % emits
+
+    start_on = parser.get('start on')
+    if start_on:
+        print "  start on %s" % start_on
+
+    stop_on = parser.get('stop on')
+    if stop_on:
+        print "  stop on %s" % stop_on
+
 if __name__ == '__main__':
     global quiet
     global no_wait
     global dry_run
     global INIT_CONF_DIR
     global PID_DIR
-    
+
     INIT_CONF_DIR = '/etc/init/'
     PID_DIR = '/var/run/upstart-dummy-pids/'
-    
+
+    if len(sys.argv) < 2:
+        print "initctl: missing command"
+        sys.exit(1)
+
     if os.path.basename(sys.argv[0]) == 'initctl':
         cmd = sys.argv[1]
         sysargs = sys.argv[2:]
@@ -256,8 +275,8 @@ if __name__ == '__main__':
         cmd = os.path.basename(sys.argv[0])
         sysargs = sys.argv[1:]
 
-    if cmd not in ['start', 'stop', 'restart', 'reload', 'status']:
-        print "Command %s not supported, exiting!" % cmd
+    if cmd not in ['start', 'stop', 'restart', 'reload', 'status', 'show-config']:
+        print "initct: invalid command: %s" % cmd
         sys.exit(1)
 
     parser = optparse.OptionParser()
@@ -288,6 +307,10 @@ if __name__ == '__main__':
     
     parser = UpstartConfigParser()
     parser.read(conffile)
+
+    if cmd == 'show-config':
+        show_config(job, parser)
+        sys.exit(0)
 
     status = job_status(job, parser, quiet = True)
 
