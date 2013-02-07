@@ -285,6 +285,7 @@ if __name__ == '__main__':
     parser.add_option('-q', '--quiet', action="store_true", dest='quiet', help='reduce output to errors only')
     parser.add_option('-n', '--no-wait', action="store_true", dest='no_wait', help='do not wait for job to start before exiting')
     parser.add_option('-d', '--dry-run', action="store_true", dest='dry_run', help='do not do anything, just display what would be done')
+    parser.add_option('-e', '--enumerate', action="store_true", dest='enumerate', help='output one line for each event')
     parser.disable_interspersed_args()
     (opts, args) = parser.parse_args(sysargs)
     
