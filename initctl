@@ -239,6 +239,10 @@ def job_status(job, parser, quiet = False):
         print "%s: %s" % (job, status)
     return ret
 
+def show_version():
+    #this is the version in 14.04.5
+    print "init (upstart 1.12.1)"
+
 def show_config(job, parser, quiet = False):
     print job
 
@@ -267,6 +271,10 @@ if __name__ == '__main__':
     if len(sys.argv) < 2:
         print "initctl: missing command"
         sys.exit(1)
+
+    if sys.argv[1] == 'version':
+        show_version()
+        sys.exit(0)
 
     if os.path.basename(sys.argv[0]) == 'initctl':
         cmd = sys.argv[1]
