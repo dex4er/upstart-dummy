@@ -87,8 +87,22 @@ def which(program):
 
     return None
 
+def set_upstart_job_var(job):
+    name = os.path.basename(job)
+    if name is not None and name is not "":
+        try:
+            name = name[:name.index(".conf")]
+        except:
+            pass
+        os.environ["UPSTART_JOB"] = name
+
+def unset_upstart_job_var():
+    del os.environ["UPSTART_JOB"]
+
 def start_job(job, parser):
     global START_STOP_DAEMON
+
+    set_upstart_job_var(job)
 
     pre_start_exec = parser.get('pre-start exec')
     pre_start_script = parser.get('pre-start script')
@@ -136,10 +150,13 @@ def start_job(job, parser):
     if post_start_script: 
         run_script(post_start_script, env = env, exit_on_error = True)
 
+    unset_upstart_job_var()
     print ("%s: started" % job)
         
 def stop_job(job, parser):
     global START_STOP_DAEMON
+
+    set_upstart_job_var(job)
 
     pre_stop_exec = parser.get('pre-stop exec')
     pre_stop_script = parser.get('pre-stop script')
@@ -179,6 +196,7 @@ def stop_job(job, parser):
     if post_stop_script: 
         run_script(post_stop_script, env = env, exit_on_error = True)
 
+    unset_upstart_job_var()
     print ("%s: stopped" % job)
 
 def restart_job(job, parser):
@@ -259,12 +277,6 @@ def show_config(job, parser, quiet = False):
         print "  stop on %s" % stop_on
 
 def emit_signal(emit, parser, quiet = True):
-    '''
-    read each conf, if it has an response
-    for the emit passed into emit, store it
-    run them all at the end by dispatching
-    to the proper function (start, stop, restart)
-    '''
     start_ons = []
     stop_ons = []
     for root, dirs, files in os.walk(INIT_CONF_DIR):
@@ -280,9 +292,6 @@ def emit_signal(emit, parser, quiet = True):
                 if conf_stop_on is not None and emit in conf_stop_on:
                     stop_ons.append(conffile)
 
-    '''
-    now I have a list of confs that need to respond
-    '''
     # make master list
     confs = []
     for i in range(0, len(start_ons)):
@@ -291,7 +300,7 @@ def emit_signal(emit, parser, quiet = True):
         if stop_ons[i] not in confs:
             confs.append(stop_ons[i])
 
-    #3 options: only in start, only in stop, in both
+    # 3 options: only in start, only in stop, in both
     for i in range(0, len(confs)):
         parser.reset()
         parser.read(confs[i])
