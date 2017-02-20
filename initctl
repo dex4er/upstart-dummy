@@ -92,7 +92,7 @@ def set_upstart_job_var(job):
     if name is not None and name is not "":
         try:
             name = name[:name.index(".conf")]
-        except:
+        except ValueError:
             pass
         os.environ["UPSTART_JOB"] = name
 
