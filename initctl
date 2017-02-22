@@ -87,8 +87,22 @@ def which(program):
 
     return None
 
+def set_upstart_job_var(job):
+    name = os.path.basename(job)
+    if name is not None and name is not "":
+        try:
+            name = name[:name.index(".conf")]
+        except ValueError:
+            pass
+        os.environ["UPSTART_JOB"] = name
+
+def unset_upstart_job_var():
+    del os.environ["UPSTART_JOB"]
+
 def start_job(job, parser):
     global START_STOP_DAEMON
+
+    set_upstart_job_var(job)
 
     pre_start_exec = parser.get('pre-start exec')
     pre_start_script = parser.get('pre-start script')
@@ -136,10 +150,13 @@ def start_job(job, parser):
     if post_start_script: 
         run_script(post_start_script, env = env, exit_on_error = True)
 
+    unset_upstart_job_var()
     print ("%s: started" % job)
         
 def stop_job(job, parser):
     global START_STOP_DAEMON
+
+    set_upstart_job_var(job)
 
     pre_stop_exec = parser.get('pre-stop exec')
     pre_stop_script = parser.get('pre-stop script')
@@ -179,6 +196,7 @@ def stop_job(job, parser):
     if post_stop_script: 
         run_script(post_stop_script, env = env, exit_on_error = True)
 
+    unset_upstart_job_var()
     print ("%s: stopped" % job)
 
 def restart_job(job, parser):
@@ -239,6 +257,10 @@ def job_status(job, parser, quiet = False):
         print "%s: %s" % (job, status)
     return ret
 
+def show_version():
+    #this is the version in 14.04.5
+    print "init (upstart 1.12.1)"
+
 def show_config(job, parser, quiet = False):
     print job
 
@@ -254,6 +276,55 @@ def show_config(job, parser, quiet = False):
     if stop_on:
         print "  stop on %s" % stop_on
 
+def emit_signal(emit, parser, quiet = True):
+    start_ons = []
+    stop_ons = []
+    for root, dirs, files in os.walk(INIT_CONF_DIR):
+        for file in files:
+            parser.reset()
+            conffile = INIT_CONF_DIR + file
+            if os.access(conffile, os.R_OK):
+                parser.read(conffile)
+                conf_start_on = parser.get('start on')
+                if conf_start_on is not None and emit in conf_start_on:
+                    start_ons.append(conffile)
+                conf_stop_on = parser.get('stop on')
+                if conf_stop_on is not None and emit in conf_stop_on:
+                    stop_ons.append(conffile)
+
+    # make master list
+    confs = []
+    for i in range(0, len(start_ons)):
+        confs.append(start_ons[i])
+    for i in range(0, len(stop_ons)):
+        if stop_ons[i] not in confs:
+            confs.append(stop_ons[i])
+
+    # 3 options: only in start, only in stop, in both
+    for i in range(0, len(confs)):
+        parser.reset()
+        parser.read(confs[i])
+        status = job_status(confs[i], parser, quiet=True)
+        if confs[i] in start_ons and confs[i] in stop_ons:
+            #attempt restart or start
+            if status:
+                restart_job(confs[i], parser)
+            else:
+                start_job(confs[i], parser)
+        elif confs[i] in start_ons and confs[i] not in stop_ons:
+            #start
+            if not status:
+                start_job(confs[i], parser)
+            elif not quiet:
+                print os.path.basename(confs[i]) + ": could not be started because it is already running"
+        elif confs[i] not in stop_ons and confs[i] in stop_ons:
+            #stop
+            if status:
+                stop_job(confs[i], parser)
+            elif not quiet:
+                print os.path.basename(confs[i]) + ": could not be stopped because it is not running"
+
+
 if __name__ == '__main__':
     global quiet
     global no_wait
@@ -268,6 +339,10 @@ if __name__ == '__main__':
         print "initctl: missing command"
         sys.exit(1)
 
+    if sys.argv[1] == 'version':
+        show_version()
+        sys.exit(0)
+
     if os.path.basename(sys.argv[0]) == 'initctl':
         cmd = sys.argv[1]
         sysargs = sys.argv[2:]
@@ -275,7 +350,7 @@ if __name__ == '__main__':
         cmd = os.path.basename(sys.argv[0])
         sysargs = sys.argv[1:]
 
-    if cmd not in ['start', 'stop', 'restart', 'reload', 'status', 'show-config']:
+    if cmd not in ['start', 'stop', 'restart', 'reload', 'status', 'show-config', 'emit']:
         print "initct: invalid command: %s" % cmd
         sys.exit(1)
 
@@ -295,8 +370,15 @@ if __name__ == '__main__':
     
     if len(args) == 0:
         exit_error(parser.get_usage())
-    
+
     job = os.path.basename(args[0]) # prevent nasty stuff
+
+    parser = UpstartConfigParser()
+
+    if cmd == 'emit':
+        emit_signal(job, parser)
+        sys.exit(0)
+
     conffile = None
     for root, dirs, files in os.walk(INIT_CONF_DIR):
         if job+'.conf' in files:
@@ -305,8 +387,7 @@ if __name__ == '__main__':
 
     if not conffile or not os.access(INIT_CONF_DIR+job+'.conf', os.R_OK):
         exit_error("No such job: %s" % job)
-    
-    parser = UpstartConfigParser()
+
     parser.read(conffile)
 
     if cmd == 'show-config':
